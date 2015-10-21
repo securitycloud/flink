@@ -9,27 +9,27 @@ import flink.Flow;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichFilterFunction;
+import org.apache.flink.api.common.functions.RichFunction;
 import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.configuration.Configuration;
 
 /**
  *
  * @author Lastovicka
  */
-public class FilterTest extends RichFilterFunction<Flow> implements FilterFunction<Flow>, MapFunction<Flow, String> {
+public class CountTest extends RichFilterFunction<Flow> implements RichFunction, MapFunction<Flow, String> {
 
-    private static int counter;
-    private static int filtered;
-    ParameterTool parameterTool;
+    private ParameterTool parameterTool;
+    private IntCounter totalFlows;
+    private IntCounter packets;
 
-    private static final FilterTest singleton = new FilterTest();
-
-    private FilterTest() {
-        Logger.getLogger(FilterTest.class.getName()).log(Level.SEVERE, "Filter constructor called!!!!!!!!!!!!!!!!!!!!!!");
-        FilterTest.counter = 0;
-        FilterTest.filtered = 0;
+    public CountTest() {
+        Logger.getLogger(CountTest.class.getName()).log(Level.SEVERE, "Filter constructor called!!!!!!!!!!!!!!!!!!!!!!");  
+        totalFlows = new IntCounter();
+        packets = new IntCounter();        
         try {
             this.parameterTool = ParameterTool.fromPropertiesFile("/tmp/flink.properties");
             //this.parameterTool = ParameterTool.fromPropertiesFile("src\\main\\resources\\flink.properties");
@@ -37,44 +37,40 @@ public class FilterTest extends RichFilterFunction<Flow> implements FilterFuncti
             Logger.getLogger(FilterTest.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
-
-    public static FilterTest getInstance() {
-        return singleton;
-    }
     
     @Override
     public boolean filter(Flow flow) throws Exception {
+        this.totalFlows.add(1);
         if (flow == null || flow.getSrc_ip_addr() == null) {
             return false;
         }
         //if (flow.getSrc_ip_addr().equals(parameterTool.getRequired("filter.srcip"))){
         if (flow.getDst_port() == parameterTool.getInt("filter.dstport")) {
-            //if( (counter % parameterTool.getInt("countwindow.size") ) == 0){
-            filtered++;
+            this.packets.add(1);
             return true;
-            //}
         }
         return false;
     }
-
-    public static int getCounter() {
-        return counter;
-    }
-
-    public static void setCounter(int counter) {
-        FilterTest.counter = counter;
-    }
-
+    
     @Override
     public String map(Flow t) throws Exception {
-        //setCounter(counter + 1);
-        counter++;
+        int counter = this.totalFlows.getLocalValue();
+        int packetsCounter = this.packets.getLocalValue();
         if ((counter % parameterTool.getInt("countwindow.size")) == 0 || counter == 1) {
             Logger.getLogger(FilterTest.class.getName()).log(Level.SEVERE, "Count window triggered at time {0}, counter value is {1}, filtered: {2}"
-                    , new Object[]{System.currentTimeMillis(), counter, filtered});
-            return "Index " + getRuntimeContext().getIndexOfThisSubtask() + ": Count window triggered at time " + System.currentTimeMillis() + ", counter value is " + counter + ", filtered: " + filtered;
+                    , new Object[]{System.currentTimeMillis(), packetsCounter});
+            return "Index " + getRuntimeContext().getIndexOfThisSubtask() + ": Count window triggered at time " + System.currentTimeMillis() + ", counter value is " + counter + ", filtered: " + packetsCounter;
         }
         return null;
     }
 
+    @Override
+    public void open(Configuration parameters) throws Exception {
+        getRuntimeContext().addAccumulator("totalFlows", totalFlows);
+        getRuntimeContext().addAccumulator("packets", packets);
+        super.open(parameters); //To change body of generated methods, choose Tools | Templates.
+    }
+    
+    
+    
 }

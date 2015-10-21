@@ -21,6 +21,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.apache.flink.api.common.JobExecutionResult;
+import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer082;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -29,6 +31,8 @@ import org.apache.flink.streaming.connectors.kafka.KafkaSink;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.operators.Keys;
 import org.apache.flink.streaming.api.datastream.WindowedDataStream;
 import org.apache.flink.streaming.api.functions.RichWindowMapFunction;
 import org.apache.flink.streaming.api.functions.WindowMapFunction;
@@ -54,39 +58,76 @@ public class Job {
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        String propertiesFile = "src\\main\\resources\\flink.properties";
-        //String propertiesFile = "/tmp/flink.properties";
+        //String propertiesFile = "src\\main\\resources\\flink.properties";
+        String propertiesFile = "/tmp/flink.properties";
         ParameterTool parameterTool = ParameterTool.fromPropertiesFile(propertiesFile);
+        ParameterTool countWindowParams = ParameterTool.fromPropertiesFile("/tmp/flink_count_window.properties");
 
         DataStream<String> messageStream = env.addSource((FlinkKafkaConsumer082) new FlinkKafkaConsumer082<>(parameterTool.getRequired("consumer.topic"), new FlowSchema(), parameterTool.getProperties()));
-        //DataStream<String> messageStream = env.addSource(new FlinkKafkaConsumer082<>(parameterTool.getRequired("topic"), new SimpleStringSchema(), parameterTool.getProperties()));
+        DataStream<String> serviceStream = env.addSource((FlinkKafkaConsumer082) new FlinkKafkaConsumer082<>(countWindowParams.getRequired("consumer.topic"), new SimpleStringSchema(), countWindowParams.getProperties()));
 
-        DataStream<String> messageStream2 = messageStream.copy();
-        
 //        WindowedDataStream<String> windowedStream = messageStream.window(Count.of(10))
 //                                                                 .every(Time.of(1, TimeUnit.SECONDS));
 //        windowedStream.flatten().print();
-        
-        FilterTest filterTest = FilterTest.getInstance();
+        CountWindow countWindow = CountWindow.getInstance();
 
+        EmptyTest emptyTest = EmptyTest.getInstance();
+        FilterTest2 filterTest = FilterTest2.getInstance();
+        CountTest countTest = new CountTest();
+
+        //String method = "empty";
+        //String method = "filter";
+
+        MapFunction test = emptyTest;
+        //MapFunction test = filterTest;
+        //MapFunction test = countTest;
         
-        
-        messageStream.rebalance()
-                .filter((FilterFunction) filterTest);            
-//                .addSink((KafkaSink) new KafkaSink<>(parameterTool.getRequired("bootstrap.servers"),
-//                                parameterTool.getRequired("producer.topic"),
-//                                new SimpleStringSchema()));
-        
-        messageStream2.rebalance()
-                .map((MapFunction) filterTest)
-                .filter((Object t) -> t != null)                
+        messageStream.map(test)
+                .filter((Object t) -> t != null)
                 .addSink((KafkaSink) new KafkaSink<>(parameterTool.getRequired("bootstrap.servers"),
                                 parameterTool.getRequired("producer.topic"),
-                                new SimpleStringSchema()));     
-        
-        
+                                new SimpleStringSchema()));
 
+        serviceStream.map((MapFunction) countWindow)
+                .filter((Object t) -> t != null)
+                .addSink((KafkaSink) new KafkaSink<>(countWindowParams.getRequired("bootstrap.servers"),
+                                countWindowParams.getRequired("producer.topic"),
+                                new SimpleStringSchema()));
+
+        /*switch (method) {
+         case "empty":
+         messageStream
+         .map((MapFunction) emptyTest)
+         .filter((Object t) -> t != null)
+         .addSink((KafkaSink) new KafkaSink<>(parameterTool.getRequired("bootstrap.servers"),
+         parameterTool.getRequired("producer.topic"),
+         new SimpleStringSchema()));
+                
+         serviceStream.map((MapFunction) countWindow)
+         .filter((Object t) -> t != null)
+         .addSink((KafkaSink) new KafkaSink<>(countWindowParams.getRequired("bootstrap.servers"),
+         countWindowParams.getRequired("producer.topic"),
+         new SimpleStringSchema()));
+         break;
+         case "filter":
+         messageStream.rebalance()
+         .map((MapFunction) filterTest)
+         .filter((Object t) -> t != null)
+         .addSink((KafkaSink) new KafkaSink<>(parameterTool.getRequired("bootstrap.servers"),
+         parameterTool.getRequired("producer.topic"),
+         new SimpleStringSchema()));
+                
+         serviceStream.map((MapFunction) countWindow)
+         .filter((Object t) -> t != null)
+         .addSink((KafkaSink) new KafkaSink<>(countWindowParams.getRequired("bootstrap.servers"),
+         countWindowParams.getRequired("producer.topic"),
+         new SimpleStringSchema()));
+         break;
+         default:
+         throw new UnsupportedOperationException("Unknown method " + method);
+         }*/
         env.execute();
+
     }
 
 }
