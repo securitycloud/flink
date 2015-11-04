@@ -56,6 +56,13 @@ public class Job {
 
     public static void main(String[] args) throws Exception {
 
+        String testMethod;
+        if (args.length == 1) {
+            testMethod = args[0];
+        } else {
+            testMethod = "empty";
+        }
+
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         //String propertiesFile = "src\\main\\resources\\flink.properties";
@@ -66,22 +73,31 @@ public class Job {
         DataStream<String> messageStream = env.addSource((FlinkKafkaConsumer082) new FlinkKafkaConsumer082<>(parameterTool.getRequired("consumer.topic"), new FlowSchema(), parameterTool.getProperties()));
         DataStream<String> serviceStream = env.addSource((FlinkKafkaConsumer082) new FlinkKafkaConsumer082<>(countWindowParams.getRequired("consumer.topic"), new SimpleStringSchema(), countWindowParams.getProperties()));
 
-//        WindowedDataStream<String> windowedStream = messageStream.window(Count.of(10))
-//                                                                 .every(Time.of(1, TimeUnit.SECONDS));
-//        windowedStream.flatten().print();
         CountWindow countWindow = CountWindow.getInstance();
+        MapFunction test = null;
 
-        EmptyTest emptyTest = EmptyTest.getInstance();
-        FilterTest2 filterTest = FilterTest2.getInstance();
-        CountTest countTest = new CountTest();
-
-        //String method = "empty";
-        //String method = "filter";
-
-        MapFunction test = emptyTest;
-        //MapFunction test = filterTest;
-        //MapFunction test = countTest;
-        
+        switch (testMethod) {
+            case "empty":
+                test = EmptyTest.getInstance();
+                break;
+            case "filter":
+                test = FilterTest2.getInstance();
+                break;
+            case "count":
+                test = CountTest.getInstance();
+                break;
+            case "aggregate":
+                test = AggregateTest.getInstance();
+                break;
+            case "topN":
+                test = TopNTest.getInstance();
+                break;
+            case "scan":
+                test = ScanTest.getInstance();
+                break;
+            default:
+                throw new UnsupportedOperationException("Unknown method " + testMethod);
+        }
         messageStream.map(test)
                 .filter((Object t) -> t != null)
                 .addSink((KafkaSink) new KafkaSink<>(parameterTool.getRequired("bootstrap.servers"),
@@ -93,39 +109,6 @@ public class Job {
                 .addSink((KafkaSink) new KafkaSink<>(countWindowParams.getRequired("bootstrap.servers"),
                                 countWindowParams.getRequired("producer.topic"),
                                 new SimpleStringSchema()));
-
-        /*switch (method) {
-         case "empty":
-         messageStream
-         .map((MapFunction) emptyTest)
-         .filter((Object t) -> t != null)
-         .addSink((KafkaSink) new KafkaSink<>(parameterTool.getRequired("bootstrap.servers"),
-         parameterTool.getRequired("producer.topic"),
-         new SimpleStringSchema()));
-                
-         serviceStream.map((MapFunction) countWindow)
-         .filter((Object t) -> t != null)
-         .addSink((KafkaSink) new KafkaSink<>(countWindowParams.getRequired("bootstrap.servers"),
-         countWindowParams.getRequired("producer.topic"),
-         new SimpleStringSchema()));
-         break;
-         case "filter":
-         messageStream.rebalance()
-         .map((MapFunction) filterTest)
-         .filter((Object t) -> t != null)
-         .addSink((KafkaSink) new KafkaSink<>(parameterTool.getRequired("bootstrap.servers"),
-         parameterTool.getRequired("producer.topic"),
-         new SimpleStringSchema()));
-                
-         serviceStream.map((MapFunction) countWindow)
-         .filter((Object t) -> t != null)
-         .addSink((KafkaSink) new KafkaSink<>(countWindowParams.getRequired("bootstrap.servers"),
-         countWindowParams.getRequired("producer.topic"),
-         new SimpleStringSchema()));
-         break;
-         default:
-         throw new UnsupportedOperationException("Unknown method " + method);
-         }*/
         env.execute();
 
     }

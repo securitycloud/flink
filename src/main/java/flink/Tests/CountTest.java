@@ -13,6 +13,7 @@ import org.apache.flink.api.common.accumulators.IntCounter;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichFilterFunction;
 import org.apache.flink.api.common.functions.RichFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 
@@ -20,57 +21,42 @@ import org.apache.flink.configuration.Configuration;
  *
  * @author Lastovicka
  */
-public class CountTest extends RichFilterFunction<Flow> implements RichFunction, MapFunction<Flow, String> {
+public class CountTest extends RichMapFunction<Flow, String> {
 
     private ParameterTool parameterTool;
-    private IntCounter totalFlows;
-    private IntCounter packets;
+    private static int counter;
+    private static int packets;
 
-    public CountTest() {
-        Logger.getLogger(CountTest.class.getName()).log(Level.SEVERE, "Filter constructor called!!!!!!!!!!!!!!!!!!!!!!");  
-        totalFlows = new IntCounter();
-        packets = new IntCounter();        
+    private static final CountTest singleton = new CountTest();
+    
+    private CountTest() {
+        Logger.getLogger(CountTest.class.getName()).log(Level.SEVERE, "Count constructor called");  
+        CountTest.counter = 0;      
+        CountTest.packets = 0;
         try {
             this.parameterTool = ParameterTool.fromPropertiesFile("/tmp/flink.properties");
             //this.parameterTool = ParameterTool.fromPropertiesFile("src\\main\\resources\\flink.properties");
         } catch (IOException ex) {
-            Logger.getLogger(FilterTest.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(CountTest.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
-    @Override
-    public boolean filter(Flow flow) throws Exception {
-        this.totalFlows.add(1);
-        if (flow == null || flow.getSrc_ip_addr() == null) {
-            return false;
-        }
-        //if (flow.getSrc_ip_addr().equals(parameterTool.getRequired("filter.srcip"))){
-        if (flow.getDst_port() == parameterTool.getInt("filter.dstport")) {
-            this.packets.add(1);
-            return true;
-        }
-        return false;
+    public static CountTest getInstance() {
+        return singleton;
     }
     
+   
     @Override
-    public String map(Flow t) throws Exception {
-        int counter = this.totalFlows.getLocalValue();
-        int packetsCounter = this.packets.getLocalValue();
+    public String map(Flow flow) throws Exception {
+        if (flow != null && flow.getDst_port() == parameterTool.getInt("filter.dstport")) {
+            packets += flow.getPackets();
+        }
+        counter++;
         if ((counter % parameterTool.getInt("countwindow.size")) == 0 || counter == 1) {
-            Logger.getLogger(FilterTest.class.getName()).log(Level.SEVERE, "Count window triggered at time {0}, counter value is {1}, filtered: {2}"
-                    , new Object[]{System.currentTimeMillis(), packetsCounter});
-            return "Index " + getRuntimeContext().getIndexOfThisSubtask() + ": Count window triggered at time " + System.currentTimeMillis() + ", counter value is " + counter + ", filtered: " + packetsCounter;
+            //return "Index " + getRuntimeContext().getIndexOfThisSubtask() + ": Count window triggered at time " + System.currentTimeMillis() + ", counter value is " + counter + ", filtered: " + packetsCounter;
+            return "count " + String.valueOf(System.currentTimeMillis()) + " " + String.valueOf(parameterTool.getInt("countwindow.size") + " " + packets);
         }
         return null;
     }
-
-    @Override
-    public void open(Configuration parameters) throws Exception {
-        getRuntimeContext().addAccumulator("totalFlows", totalFlows);
-        getRuntimeContext().addAccumulator("packets", packets);
-        super.open(parameters); //To change body of generated methods, choose Tools | Templates.
-    }
-    
-    
     
 }
