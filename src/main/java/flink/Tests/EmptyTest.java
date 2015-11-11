@@ -50,7 +50,7 @@ public class EmptyTest extends RichMapFunction<Flow, String>{
     public String map(Flow flow) throws Exception {
         counter++;
         if ((counter % parameterTool.getInt("countwindow.size")) == 0) {
-            return "empty " + String.valueOf(System.currentTimeMillis()) + " " + String.valueOf(parameterTool.getInt("countwindow.size"));
+            return "empty " + String.valueOf(System.currentTimeMillis()) + " " + String.valueOf(parameterTool.getInt("countwindow.size")) + " #" + getRuntimeContext().getIndexOfThisSubtask();
         }
         return null;
     }

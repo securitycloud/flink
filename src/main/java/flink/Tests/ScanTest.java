@@ -66,7 +66,7 @@ public class ScanTest extends RichMapFunction<Flow, String> {
         if ((counter % parameterTool.getInt("countwindow.size")) == 0) {
             String map = "content:" + aggregate.toString();
             aggregate.clear();
-            return "topN " + String.valueOf(System.currentTimeMillis()) + " " + String.valueOf(parameterTool.getInt("countwindow.size")) + " " + map;
+            return "scan " + String.valueOf(System.currentTimeMillis()) + " " + String.valueOf(parameterTool.getInt("countwindow.size")) + " " + map;
 
         }
         return null;
